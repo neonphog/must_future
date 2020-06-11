@@ -1,3 +1,4 @@
+#![deny(warnings)]
 #![deny(missing_docs)]
 #![deny(unused_must_use)]
 //! BoxFutures cannot be marked `#[must_use]` because they are just type
@@ -67,6 +68,32 @@ pub struct MustBoxFuture<'lt, T> {
     sub_fut: BoxFuture<'lt, T>,
 }
 
+impl<'lt, T> MustBoxFuture<'lt, T> {
+    /// Construct a new MustBoxFuture from a a raw unboxed future.
+    /// Would be nice to `impl From<F: Future> for MustBoxFuture`,
+    /// but blanket impls in rust core prevent this.
+    pub fn new<F: 'lt + std::future::Future<Output = T> + Send>(f: F) -> Self {
+        Self {
+            sub_fut: futures::future::FutureExt::boxed(f),
+        }
+    }
+}
+
+impl<T: ?Sized> IntoMustBoxFuture for T where T: std::future::Future {}
+
+/// Helper trait for converting raw unboxed futures into MustBoxFutures.
+/// Would be nice to `impl<F: Future> Into<MustBoxFuture> for F`,
+/// but blanket impls in rust core prevent this.
+pub trait IntoMustBoxFuture: std::future::Future {
+    /// Convert this raw future into a MustBoxFuture
+    fn must_box<'a>(self) -> MustBoxFuture<'a, Self::Output>
+    where
+        Self: 'a + Sized + Send,
+    {
+        MustBoxFuture::new(self)
+    }
+}
+
 impl<'lt, T> From<BoxFuture<'lt, T>> for MustBoxFuture<'lt, T> {
     fn from(f: BoxFuture<'lt, T>) -> Self {
         Self { sub_fut: f }
@@ -107,6 +134,22 @@ mod tests {
     pub async fn must_box_future_can_still_process() {
         fn get_future() -> MustBoxFuture<'static, &'static str> {
             async { "test1" }.boxed().into()
+        }
+        assert_eq!("test1", get_future().await);
+    }
+
+    #[tokio::test]
+    pub async fn must_box_future_with_new() {
+        fn get_future() -> MustBoxFuture<'static, &'static str> {
+            MustBoxFuture::new(async { "test1" })
+        }
+        assert_eq!("test1", get_future().await);
+    }
+
+    #[tokio::test]
+    pub async fn must_box_future_with_must_box() {
+        fn get_future() -> MustBoxFuture<'static, &'static str> {
+            async { "test1" }.must_box()
         }
         assert_eq!("test1", get_future().await);
     }

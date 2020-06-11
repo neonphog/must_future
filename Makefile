@@ -4,26 +4,23 @@
 
 .PHONY: all publish test fmt clean tools tool_rust tool_fmt tool_readme
 
-RUSTFLAGS += -D warnings
+#RUSTFLAGS += ...
 
 SHELL = /usr/bin/env sh
 
-ENV = RUSTFLAGS='$(RUSTFLAGS)' CARGO_BUILD_JOBS='$(shell nproc || sysctl -n hw.physicalcpu)' NUM_JOBS='$(shell nproc || sysctl -n hw.physicalcpu)' CARGO_INCREMENTAL='1'
+ENV = RUSTFLAGS='$(RUSTFLAGS)' CARGO_BUILD_JOBS='$(shell nproc || sysctl -n hw.physicalcpu)' NUM_JOBS='$(shell nproc || sysctl -n hw.physicalcpu)'
 
 all: test
 
 publish: tools
 	git diff --exit-code
 	cargo publish
-	VER="v$$(grep version Cargo.toml | cut -d ' ' -f 3 | cut -d \" -f 2)"; git tag -a $$VER -m $$VER
+	VER="v$$(grep version Cargo.toml | head -1 | cut -d ' ' -f 3 | cut -d \" -f 2)"; git tag -a $$VER -m $$VER
 	git push --tags
 
 test: tools
 	$(ENV) cargo fmt -- --check
-	$(ENV) cargo clippy -- \
-		-A clippy::nursery -A clippy::style -A clippy::cargo \
-		-A clippy::pedantic -A clippy::restriction \
-		-D clippy::complexity -D clippy::perf -D clippy::correctness
+	$(ENV) cargo clippy
 	$(ENV) RUST_BACKTRACE=1 cargo test
 	$(ENV) cargo readme -o README.md
 	@if [ "${CI}x" != "x" ]; then git diff --exit-code; fi
